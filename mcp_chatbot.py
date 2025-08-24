@@ -92,7 +92,7 @@ class MCP_ChatBot:
         # Create server parameters for stdio connection
         server_params = StdioServerParameters(
             command="uv", #Executable
-            args = ["run" "research_server.py"], #Optional arguments
+            args = ["run", "research_server.py"], #Optional arguments
             env=None, #Optional environment variables
         )
 
