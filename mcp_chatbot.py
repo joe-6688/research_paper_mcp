@@ -85,6 +85,9 @@ class MCP_ChatBot:
                 query = input("\nQuery: ").strip()
                 if query.lower() == "quit":
                     break
+
+                await self.process_query(query)
+                print("\n")
             except Exception as e:
                 print(f"\nError: {e}")
 
