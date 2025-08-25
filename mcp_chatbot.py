@@ -1,3 +1,6 @@
+import os
+import json
+from openai import OpenAI
 from urllib import response
 from dotenv import load_dotenv
 from anthropic import Anthropic
@@ -20,6 +23,10 @@ class MCP_ChatBot:
         # Initialize session and client objects
         self.session: ClientSession
         self.anthropic = Anthropic()
+        self.openai_client = OpenAI(
+            base_url="https://openrouter.ai/api/v1",
+            api_key=os.environ.get("OPENROUTER_API_KEY"),
+        )
         self.available_tools: List[dict] = []
 
     
@@ -30,50 +37,46 @@ class MCP_ChatBot:
              }
         ]
 
-        response = self.anthropic.messages.create(max_tokens=2024,
-                                                    model = 'claude-3-7-sonnet-20250219', 
-                                                    tools= self.available_tools, # type: ignore
-                                                    messages= messages, # type: ignore
-                                                   )
-        process_query = True
-        while process_query:
-            assistant_content = []
-            for content in response.content:
-                if content.type == 'text':
-                    print(content.text)
-                    assistant_content.append(content)
-                    if(len(response.content) == 1):
-                        process_query = False
-                elif content.type == 'tool_use':
-                    assistant_content.append(content)
-                    messages.append({'role':'assistant', 'content':assistant_content})
+        response = self.openai_client.chat.completions.create(
+            model='moonshotai/kimi-k2:free',
+            messages=messages, # type: ignore
+            tools=self.available_tools, # type: ignore
+        )
+        
+        print(f"[DEBUG] First response: {response}")
 
-                    tool_id = content.id
-                    tool_args = content.input
-                    tool_name = content.name
+        message = response.choices[0].message
+        messages.append(message)
 
-                    print(f"Calling tool {tool_name} with args {tool_args}")
+        if message.tool_calls:
+            tool_calls = message.tool_calls
+            print(f"[DEBUG] Tool calls: {tool_calls}")
 
-                    #Call a tool
-                    result = await self.session.call_tool(tool_name,arguments=tool_args) # type: ignore
+            for tool_call in tool_calls:
+                tool_name = tool_call.function.name
+                tool_args = tool_call.function.arguments
+                print(f"[DEBUG] Calling tool {tool_name} with args {tool_args}")
 
-                    messages.append({"role":"user", "content":[
-                       {
-                           "type": "tool_result",
-                           "tool_use_id": tool_id,
-                           "content": result.content
-                       } 
-                    ]})
+                result = await self.session.call_tool(tool_name,arguments=json.loads(tool_args)) # type: ignore
+                print(f"[DEBUG] Tool result: {result}")
 
-                    response = self.anthropic.messages.create( max_tokens=2024,
-                                    model = 'claude-3-7-sonnet-20250219', 
-                                      tools = self.available_tools, # type: ignore
-                                      messages = messages)  # type: ignore
-
-                    if (len(response.content) == 1 and response.content[0].type == "text"):
-                        print(response.content[0].text)
-                        process_query = False
-                    
+                messages.append({
+                    'tool_call_id': tool_call.id,
+                    'role': 'tool',
+                    'name': tool_name,
+                    'content': result.content
+                })
+            
+            print(f"[DEBUG] Messages before second call: {messages}")
+            response = self.openai_client.chat.completions.create(
+                model='moonshotai/kimi-k2:free',
+                messages=messages
+            )
+            print(f"[DEBUG] Second response: {response}")
+            
+            print(response.choices[0].message.content)
+        else:
+            print(response.choices[0].message.content)
 
     async def chat_loop(self):
         """Run an interactive chat loop"""
@@ -85,9 +88,9 @@ class MCP_ChatBot:
                 query = input("\nQuery: ").strip()
                 if query.lower() == "quit":
                     break
-
-                await self.process_query(query)
-                print("\n")
+                if query:
+                    await self.process_query(query)
+                    print("\n")
             except Exception as e:
                 print(f"\nError: {e}")
 
@@ -114,10 +117,13 @@ class MCP_ChatBot:
 
                 self.available_tools=[
                     {
-                        "name":tool.name,
-                        "description":tool.description,
-                        "input_schema": tool.inputSchema,
-                     } 
+                        "type": "function",
+                        "function": {
+                            "name":tool.name,
+                            "description":tool.description,
+                            "parameters": tool.inputSchema,
+                        }
+                     }
                      for tool in response.tools
                 ]
 

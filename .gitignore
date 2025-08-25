@@ -8,3 +8,6 @@ wheels/
 
 # Virtual environment
 .venv
+
+# Temporary data folder.
+/papers

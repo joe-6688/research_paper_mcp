@@ -5,9 +5,18 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "anthropic>=0.64.0",
-    "arxiv>=2.2.0",
-    "mcp>=1.13.0",
-    "nest-asyncio>=1.6.0",
-    "python-dotenv>=1.1.1",
+    "httpx",
+    "pydantic",
+    "pydantic-core",
+    "typing-inspection",
+    "typing_extensions",
+    "sniffio",
+    "anyio",
+    "anthropic",
+    "python-dotenv",
+    "ollama",
+    "arxiv",
+    "mcp",
+    "nest-asyncio",
+    "openai>=1.101.0",
 ]
