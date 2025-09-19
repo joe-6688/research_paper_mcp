@@ -1,6 +1,6 @@
 import os
 import json
-from openai import OpenAI
+import google.generativeai as genai
 from urllib import response
 from dotenv import load_dotenv
 from anthropic import Anthropic
@@ -16,67 +16,73 @@ import nest_asyncio
 # nest_asyncio.apply()
 
 load_dotenv()
+genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
+
+def clean_schema(d):
+    if isinstance(d, dict):
+        d.pop('title', None)
+        d.pop('default', None)
+        for value in d.values():
+            clean_schema(value)
+    elif isinstance(d, list):
+        for item in d:
+            clean_schema(item)
 
 class MCP_ChatBot:
 
     def __init__(self) -> None:
         # Initialize session and client objects
         self.session: ClientSession
-        self.anthropic = Anthropic()
-        self.openai_client = OpenAI(
-            base_url="https://openrouter.ai/api/v1",
-            api_key=os.environ.get("OPENROUTER_API_KEY"),
-        )
+        
+        # self.gemini_client = genai.GenerativeModel('gemini-1.5-pro-latest')
+        self.gemini_client = genai.GenerativeModel('gemini-2.0-flash')
         self.available_tools: List[dict] = []
 
     
     async def process_query(self, query):
         messages = [
             {'role':'user',
-              'content': query
+              'parts': [{'text': query}]
              }
         ]
 
-        response = self.openai_client.chat.completions.create(
-            model='moonshotai/kimi-k2:free',
-            messages=messages, # type: ignore
+        response = self.gemini_client.generate_content(
+            contents=messages, # type: ignore
             tools=self.available_tools, # type: ignore
         )
         
         print(f"[DEBUG] First response: {response}")
 
-        message = response.choices[0].message
-        messages.append(message)
+        message = response.candidates[0].content.parts[0]
+        messages.append({'role': 'model', 'parts': response.candidates[0].content.parts})
 
-        if message.tool_calls:
-            tool_calls = message.tool_calls
+        if hasattr(message, 'function_call') and message.function_call.name != '':
+            tool_calls = response.candidates[0].content.parts
             print(f"[DEBUG] Tool calls: {tool_calls}")
 
             for tool_call in tool_calls:
-                tool_name = tool_call.function.name
-                tool_args = tool_call.function.arguments
-                print(f"[DEBUG] Calling tool {tool_name} with args {tool_args}")
+                if hasattr(tool_call, 'function_call'):
+                    tool_name = tool_call.function_call.name
+                    tool_args = tool_call.function_call.args
+                    print(f"[DEBUG] Calling tool {tool_name} with args {tool_args}")
 
-                result = await self.session.call_tool(tool_name,arguments=json.loads(tool_args)) # type: ignore
-                print(f"[DEBUG] Tool result: {result}")
+                    result = await self.session.call_tool(tool_name,arguments=tool_args) # type: ignore
+                    print(f"[DEBUG] Tool result: {result}")
 
-                messages.append({
-                    'tool_call_id': tool_call.id,
-                    'role': 'tool',
-                    'name': tool_name,
-                    'content': result.content
-                })
+                    messages.append({
+                        'role': 'tool',
+                        'parts': [{'function_response': {'name': tool_name, 'response': {'content': [item.text for item in result.content]}}}]
+                    })
             
             print(f"[DEBUG] Messages before second call: {messages}")
-            response = self.openai_client.chat.completions.create(
-                model='moonshotai/kimi-k2:free',
-                messages=messages
+            response = self.gemini_client.generate_content(
+                contents=messages
             )
             print(f"[DEBUG] Second response: {response}")
             
-            print(response.choices[0].message.content)
+            print(response.candidates[0].content.parts[0].text)
         else:
-            print(response.choices[0].message.content)
+            print(message.text)
 
     async def chat_loop(self):
         """Run an interactive chat loop"""
@@ -115,17 +121,16 @@ class MCP_ChatBot:
                 tools = response.tools
                 print("\nConnected to server with tools:",[tool.name for tool in tools])
 
-                self.available_tools=[
-                    {
-                        "type": "function",
-                        "function": {
+                self.available_tools=[{
+                    "function_declarations": [
+                        {
                             "name":tool.name,
                             "description":tool.description,
                             "parameters": tool.inputSchema,
                         }
-                     }
-                     for tool in response.tools
-                ]
+                        for tool in response.tools
+                ]}]
+                clean_schema(self.available_tools)
 
                 await self.chat_loop()
 

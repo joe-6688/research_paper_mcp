@@ -56,7 +56,8 @@ tools = [
 try:
     response = client.chat.completions.create(
         # model="openai/gpt-oss-20b:free",
-        model="moonshotai/kimi-k2:free",
+        # model="moonshotai/kimi-k2:free",
+        model="deepseek/deepseek-chat-v3.1:free",
         messages=[
             {
                 "role": "user",
