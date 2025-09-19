@@ -17,6 +17,8 @@ import nest_asyncio
 
 load_dotenv()
 
+free_model = "x-ai/grok-4-fast:free"
+
 class MCP_ChatBot:
 
     def __init__(self) -> None:
@@ -38,7 +40,7 @@ class MCP_ChatBot:
         ]
 
         response = self.openai_client.chat.completions.create(
-            model='moonshotai/kimi-k2:free',
+            model=free_model,
             messages=messages, # type: ignore
             tools=self.available_tools, # type: ignore
         )
@@ -69,7 +71,7 @@ class MCP_ChatBot:
             
             print(f"[DEBUG] Messages before second call: {messages}")
             response = self.openai_client.chat.completions.create(
-                model='moonshotai/kimi-k2:free',
+                model=free_model,
                 messages=messages
             )
             print(f"[DEBUG] Second response: {response}")
