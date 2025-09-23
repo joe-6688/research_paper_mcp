@@ -32,9 +32,12 @@ class MCP_ChatBot:
 
     def __init__(self) -> None:
         # Initialize session and client objects
-        self.sessions: List[ClientSession] = []
+        self.session_list: List[ClientSession] = []
         self.available_tools: List[Dict] = []
         self.tool_to_session: Dict[str, ClientSession] = {}
+
+        # Tools, Resource and Prompts to session
+        self.sessions:Dict = {}
 
         self.exit_stack = AsyncExitStack()
         
@@ -93,6 +96,33 @@ class MCP_ChatBot:
         else:
             print(response.choices[0].message.content)
 
+    async def get_resource(self, resource_uri):
+        session = self.sessions.get(resource_uri)
+
+        # Fallback for papers URIs - try any papers resource session, the topic user gave may not exists.
+        if not session and resource_uri.startswith("papers://"):
+            for uri, sess in self.sessions.items():
+                if uri.startswith("papers://"):
+                    session = sess
+                    break
+            
+        if not session:
+            print(f"Resource '{resource_uri}' not found.")
+            return
+        
+        try:
+            result = await session.read_resource(uri = resource_uri)
+            if result and result.contents:
+                print(f"\nResource: {resource_uri}")
+                print("Content:")
+                print(result.contents[0].text)
+            else:
+                print("No content available.")
+        except Exception as e:
+            print(f"Error: {e}")
+            traceback.print_exc()
+        return ""
+
     async def chat_loop(self):
         """Run an interactive chat loop"""
         print("\nMCP Chatbot Started!")
@@ -103,11 +133,23 @@ class MCP_ChatBot:
                 query = input("\nQuery: ").strip()
                 if query.lower() == "quit":
                     break
-                if query:
+                if not query:
+                    continue
+                #Check for @resource syntax first
+                if query.startswith('@'):
+                    #Remove @sign
+                    topic = query[1:]
+                    if topic == "folders":
+                        resource_uri = "papers://folders"
+                    else:
+                        resource_uri = f"papers://{topic}"
+                    await self.get_resource(resource_uri)
+                else: # Process the query by calling LLM
                     await self.process_query(query)
                     print("\n")
             except Exception as e:
                 print(f"\nError: {e}")
+                traceback.print_exc()
 
     async def connect_to_server(self, server_name: str, server_config: dict) -> None:
         """Connect to a single MCP server."""
@@ -122,15 +164,16 @@ class MCP_ChatBot:
             ) # new 
 
             await session.initialize()
-            self.sessions.append(session)
+            self.session_list.append(session)
 
-                        # List available tools for this session
+            # List available tools for this session
             response = await session.list_tools()
             tools = response.tools
             print(f"\nConnected to {server_name} with tools:", [t.name for t in tools])
             
             for tool in tools: # new
-                self.tool_to_session[tool.name] = session
+                # self.tool_to_session[tool.name] = session
+                self.sessions[tool.name] = session
                 self.available_tools.append({
                     "type": "function",
                     "function": {
@@ -139,6 +182,13 @@ class MCP_ChatBot:
                         "parameters": tool.inputSchema
                     }
                 })
+
+            # List avaialbe resources
+            resource_response = await session.list_resources()
+            if resource_response and resource_response.resources:
+                for res in resource_response.resources:
+                    resource_uri = str(res.uri)
+                    self.sessions[resource_uri] = session
 
         except Exception as e:
             print(f"Failed to connect to {server_name}: {e}")
