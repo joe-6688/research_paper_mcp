@@ -57,48 +57,52 @@ class MCP_ChatBot:
              }
         ]
 
-        response = self.openai_client.chat.completions.create(
-            model=free_model,
-            messages=messages, # type: ignore
-            tools=self.available_tools, # type: ignore
-        )
-        
-        print(f"[DEBUG] First response: {response}")
-
-        message = response.choices[0].message
-        messages.append(message)
-
-        if message.tool_calls:
-            tool_calls = message.tool_calls
-            print(f"[DEBUG] Tool calls: {tool_calls}")
-
-            for tool_call in tool_calls:
-                tool_name = tool_call.function.name
-                tool_args = tool_call.function.arguments
-                print(f"[DEBUG] Calling tool {tool_name} with args {tool_args}")
-
-                # session = self.tool_to_session[tool_name]
-                session = self.sessions[tool_name]
-                result = await session.call_tool(tool_name,arguments=json.loads(tool_args)) # type: ignore
-                print(f"[DEBUG] Tool result: {result}")
-
-                messages.append({
-                    'tool_call_id': tool_call.id,
-                    'role': 'tool',
-                    'name': tool_name,
-                    'content': result.content
-                })
-            
-            print(f"[DEBUG] Messages before second call: {messages}")
+        has_tool_use = True
+        while has_tool_use:
             response = self.openai_client.chat.completions.create(
                 model=free_model,
-                messages=messages
+                messages=messages, # type: ignore
+                tools=self.available_tools, # type: ignore
             )
-            print(f"[DEBUG] Second response: {response}")
             
-            print(response.choices[0].message.content)
-        else:
-            print(response.choices[0].message.content)
+            print(f"[DEBUG] First response: {response}")
+
+            message = response.choices[0].message
+            messages.append(message)
+
+            if message.tool_calls:
+                has_tool_use = True
+                tool_calls = message.tool_calls
+                print(f"[DEBUG] Tool calls: {tool_calls}")
+
+                for tool_call in tool_calls:
+                    tool_name = tool_call.function.name
+                    tool_args = tool_call.function.arguments
+                    print(f"[DEBUG] Calling tool {tool_name} with args {tool_args}")
+
+                    # session = self.tool_to_session[tool_name]
+                    session = self.sessions[tool_name]
+                    result = await session.call_tool(tool_name,arguments=json.loads(tool_args)) # type: ignore
+                    print(f"[DEBUG] Tool result: {result}")
+
+                    messages.append({
+                        'tool_call_id': tool_call.id,
+                        'role': 'tool',
+                        'name': tool_name,
+                        'content': result.content
+                    })
+                
+                # print(f"[DEBUG] Messages before second call: {messages}")
+                # response = self.openai_client.chat.completions.create(
+                #     model=free_model,
+                #     messages=messages
+                # )
+                # print(f"[DEBUG] Second response: {response}")
+                
+                # print(response.choices[0].message.content)
+            else:
+                has_tool_use = False
+                print(response.choices[0].message.content)
 
     async def get_resource(self, resource_uri):
         session = self.sessions.get(resource_uri)
