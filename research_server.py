@@ -7,7 +7,8 @@ from mcp.server.fastmcp import FastMCP
 PAPER_DIR = "papers"
 
 #Initialize FastMCP server
-mcp = FastMCP("research paper")
+port = int(os.environ.get("PORT", 8000))
+mcp = FastMCP("research paper",host = "0.0.0.0")
 
 @mcp.tool()
 def search_papers(topic: str, max_results: int = 5) -> List[str]:
@@ -189,5 +190,5 @@ def generate_search_prompt(topic: str, num_papers: int = 5) -> str:
 
 if __name__ == "__main__":
     # mcp.run(transport="stdio")
-    # mcp.run(transport="sse")
+    
     mcp.run(transport="streamable-http")
